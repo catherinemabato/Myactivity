@@ -15,7 +15,7 @@
 import tempfile
 import unittest
 
-from transformers import AddedToken, AutoModelForCausalLM, AutoTokenizer
+from transformers import AddedToken, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers.testing_utils import (
     require_gguf,
     require_torch_gpu,
@@ -47,6 +47,8 @@ class GgufIntegrationTests(unittest.TestCase):
     falcon7b_model_id = "xaviviro/falcon-7b-quantized-gguf"
     falcon40b_model_id = "maddes8cht/tiiuae-falcon-40b-gguf"
     original_flacon7b_model_id = "tiiuae/falcon-7b"
+    t5_model_id = "repetitio/flan-t5-small"
+    original_t5_model_id = "google/flan-t5-small"
 
     # standard quants
     q4_0_gguf_model_id = "tinyllama-1.1b-chat-v1.0.Q4_0.gguf"
@@ -80,6 +82,8 @@ class GgufIntegrationTests(unittest.TestCase):
     q2_k_falcon7b_model_id = "falcon-7b-q2_k.gguf"
     fp16_falcon7b_model_id = "falcon-7b-fp16.gguf"
     q2_k_falcon40b_model_id = "tiiuae-falcon-40b-Q2_K.gguf"
+    fp16_t5_model_id = "flan-t5-small-f16.gguf"
+    q8_0_t5_model_id = "flan-t5-small-q8_0.gguf"
 
     example_text = "Hello"
 
@@ -447,6 +451,60 @@ class GgufIntegrationTests(unittest.TestCase):
             if (
                 "self_attention.query_key_value" in quantized_name
                 and "self_attention.query_key_value" in original_name
+            ):
+                self.assertTrue(quantized_param.shape == original_param.shape)
+                torch.testing.assert_close(quantized_param, original_param)
+
+    def test_t5_f16(self):
+        tokenizer = AutoTokenizer.from_pretrained(self.t5_model_id, gguf_file=self.fp16_t5_model_id)
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.t5_model_id, gguf_file=self.fp16_t5_model_id, device_map="auto", torch_dtype=torch.float16
+        )
+
+        T5_EXAMPLE_TEXT = "translate English to German: How old are you?"
+
+        text = tokenizer(T5_EXAMPLE_TEXT, return_tensors="pt").to(torch_device)
+        out = model.generate(**text, max_new_tokens=10)
+
+        EXPECTED_TEXT = "Wie ich er?"
+        self.assertEqual(tokenizer.decode(out[0], skip_special_tokens=True), EXPECTED_TEXT)
+
+    def test_t5_q8_0(self):
+        tokenizer = AutoTokenizer.from_pretrained(self.t5_model_id, gguf_file=self.q8_0_t5_model_id)
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.t5_model_id, gguf_file=self.q8_0_t5_model_id, device_map="auto", torch_dtype=torch.float16
+        )
+
+        T5_EXAMPLE_TEXT = "translate English to German: How old are you?"
+
+        text = tokenizer(T5_EXAMPLE_TEXT, return_tensors="pt").to(torch_device)
+        out = model.generate(**text, max_new_tokens=10)
+
+        EXPECTED_TEXT = "Wie ich er?"
+        self.assertEqual(tokenizer.decode(out[0], skip_special_tokens=True), EXPECTED_TEXT)
+
+    def test_t5_weights_conversion_fp16(self):
+        quantized_model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.t5_model_id,
+            gguf_file=self.fp16_t5_model_id,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
+        original_model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.original_t5_model_id,
+            device_map="auto",
+            torch_dtype=torch.float16,
+        )
+
+        quantized_state_dict = quantized_model.state_dict()
+        original_state_dict = original_model.state_dict()
+
+        for (quantized_name, quantized_param), (original_name, original_param) in zip(
+            quantized_state_dict.items(), original_state_dict.items()
+        ):
+            if (
+                "SelfAttention" in quantized_name
+                and "SelfAttention" in original_name
             ):
                 self.assertTrue(quantized_param.shape == original_param.shape)
                 torch.testing.assert_close(quantized_param, original_param)
