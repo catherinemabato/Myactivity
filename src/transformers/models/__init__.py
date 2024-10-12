@@ -242,6 +242,7 @@ from . import (
     table_transformer,
     tapas,
     time_series_transformer,
+    timesfm,
     timesformer,
     timm_backbone,
     trocr,
