@@ -1665,49 +1665,60 @@ class IdeficsForVisionText2Text(IdeficsPreTrainedModel):
     def prepare_inputs_for_generation(
         self,
         input_ids,
-        past_key_values=None,
         attention_mask=None,
-        position_ids=None,
+        inputs_embeds=None,
+        past_key_values=None,
+        cache_position=None,
         pixel_values=None,
         image_hidden_states=None,
+        image_attention_mask=None,
         use_cache=None,
-        cache_position=None,
         **kwargs,
     ):
-        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
-        if past_key_values is not None:
-            if input_ids.shape[1] != cache_position.shape[0]:
-                input_ids = input_ids[:, cache_position]
-
-        if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past_key_values:
-                position_ids = position_ids[:, -input_ids.shape[1] :]
-
-                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
-                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
-
         model_inputs = {}
-        image_hidden_states = kwargs.pop("image_hidden_states", None)
         if image_hidden_states is not None:
             if self.config.use_resampler:
                 model_inputs["perceiver_embeddings"] = image_hidden_states
             else:
                 model_inputs["image_encoder_embeddings"] = image_hidden_states
-            pixel_values = None
+        else:
+            model_inputs["pixel_values"] = pixel_values
+
+        # If we have cache: let's slice `input_ids` through `cache_position`, to keep only the unprocessed tokens
+        if past_key_values is not None:
+            if inputs_embeds is not None:  # Exception 1
+                input_ids = input_ids[:, -cache_position.shape[0] :]
+            elif input_ids.shape[1] != cache_position.shape[0]:
+                input_ids = input_ids[:, cache_position]
+
+        position_ids = kwargs.get("position_ids", None)
+        if attention_mask is not None and position_ids is None:
+            # create position_ids on the fly for batch generation
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            if past_key_values:
+                position_ids = position_ids[:, -1].unsqueeze(-1)
+
+                # This `clone` call is needed to avoid recapturing cuda graphs with `torch.compile`'s  `mode="reduce-overhead`, as otherwise the input `position_ids` would have various stride during the decoding. Here, simply using `.contiguous()` is not sufficient as in the batch size = 1 case, `position_ids` is already contiguous but with varying stride which retriggers a capture.
+                position_ids = position_ids.clone(memory_format=torch.contiguous_format)
+
+        # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
+        if inputs_embeds is not None and cache_position[0] == 0:
+            model_inputs.update({"inputs_embeds": inputs_embeds, "input_ids": None})
+        else:
+            # The clone here is for the same reason as for `position_ids`.
+            model_inputs.update(
+                {"input_ids": input_ids.clone(memory_format=torch.contiguous_format), "inputs_embeds": None}
+            )
 
         model_inputs.update(
             {
-                "input_ids": input_ids,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
                 "cache_position": cache_position,
                 "position_ids": position_ids,
                 "attention_mask": attention_mask,
-                "pixel_values": pixel_values,
-                "image_attention_mask": kwargs.get("image_attention_mask", None),
+                "image_attention_mask": image_attention_mask,
                 "interpolate_pos_encoding": kwargs.get("interpolate_pos_encoding", False),
             }
         )
