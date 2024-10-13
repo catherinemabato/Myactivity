@@ -314,6 +314,7 @@ _import_structure = {
         "CTRLTokenizer",
     ],
     "models.cvt": ["CvtConfig"],
+    "models.dab_detr": ["DabDetrConfig"],
     "models.dac": ["DacConfig", "DacFeatureExtractor"],
     "models.data2vec": [
         "Data2VecAudioConfig",
@@ -1177,6 +1178,7 @@ else:
         ["ConditionalDetrFeatureExtractor", "ConditionalDetrImageProcessor"]
     )
     _import_structure["models.convnext"].extend(["ConvNextFeatureExtractor", "ConvNextImageProcessor"])
+    _import_structure["models.dab_detr"].extend(["DabDetrImageProcessor"])
     _import_structure["models.deformable_detr"].extend(
         ["DeformableDetrFeatureExtractor", "DeformableDetrImageProcessor"]
     )
@@ -1796,6 +1798,13 @@ else:
             "CvtForImageClassification",
             "CvtModel",
             "CvtPreTrainedModel",
+        ]
+    )
+    _import_structure["models.dab_detr"].extend(
+        [
+            "DabDetrForObjectDetection",
+            "DabDetrModel",
+            "DabDetrPreTrainedModel",
         ]
     )
     _import_structure["models.dac"].extend(
@@ -5132,6 +5141,9 @@ if TYPE_CHECKING:
         CTRLTokenizer,
     )
     from .models.cvt import CvtConfig
+    from .models.dab_detr import (
+        DabDetrConfig,
+    )
     from .models.dac import (
         DacConfig,
         DacFeatureExtractor,
@@ -6050,6 +6062,7 @@ if TYPE_CHECKING:
             ConditionalDetrImageProcessor,
         )
         from .models.convnext import ConvNextFeatureExtractor, ConvNextImageProcessor
+        from .models.dab_detr import DabDetrImageProcessor
         from .models.deformable_detr import (
             DeformableDetrFeatureExtractor,
             DeformableDetrImageProcessor,
@@ -6602,6 +6615,11 @@ if TYPE_CHECKING:
             CvtForImageClassification,
             CvtModel,
             CvtPreTrainedModel,
+        )
+        from .models.dab_detr import (
+            DabDetrForObjectDetection,
+            DabDetrModel,
+            DabDetrPreTrainedModel,
         )
         from .models.dac import (
             DacModel,
